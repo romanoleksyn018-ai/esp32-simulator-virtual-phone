@@ -1,0 +1,77 @@
+{
+  "_instructions": "Завантаж index.html на AppsGeyser.com → Create App → HTML/Website",
+  "app_name": "ESP32 Simulator + Virtual Phone",
+  "package_name": "com.esp32simulat.app",
+  "description": "HTML Application",
+  "version": "1.0.0",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icon_emoji": "🚀",
+  "permissions": [
+    "INTERNET",
+    "READ_EXTERNAL_STORAGE",
+    "WRITE_EXTERNAL_STORAGE",
+    "CAMERA",
+    "RECORD_AUDIO",
+    "ACCESS_FINE_LOCATION",
+    "ACCESS_BACKGROUND_LOCATION",
+    "VIBRATE",
+    "POST_NOTIFICATIONS",
+    "FULLSCREEN"
+  ],
+  "permissions_detail": [
+    {
+      "name": "Інтернет",
+      "android": "android.permission.INTERNET",
+      "dangerous": false
+    },
+    {
+      "name": "Читати файли",
+      "android": "android.permission.READ_EXTERNAL_STORAGE",
+      "dangerous": false
+    },
+    {
+      "name": "Зберігати файли",
+      "android": "android.permission.WRITE_EXTERNAL_STORAGE",
+      "dangerous": false
+    },
+    {
+      "name": "Камера",
+      "android": "android.permission.CAMERA",
+      "dangerous": true
+    },
+    {
+      "name": "Мікрофон",
+      "android": "android.permission.RECORD_AUDIO",
+      "dangerous": true
+    },
+    {
+      "name": "Геолокація",
+      "android": "android.permission.ACCESS_FINE_LOCATION",
+      "dangerous": true
+    },
+    {
+      "name": "Геолокація фоново",
+      "android": "android.permission.ACCESS_BACKGROUND_LOCATION",
+      "dangerous": true
+    },
+    {
+      "name": "Вібрація",
+      "android": "android.permission.VIBRATE",
+      "dangerous": false
+    },
+    {
+      "name": "Сповіщення",
+      "android": "android.permission.POST_NOTIFICATIONS",
+      "dangerous": false
+    },
+    {
+      "name": "Повноекранний режим",
+      "android": "android.permission.FULLSCREEN",
+      "dangerous": false
+    }
+  ],
+  "appsgeyser_url": "https://appsgeyser.com",
+  "pwa_ready": true,
+  "generated_at": "2026-10-02T20:21:52.087Z"
+}

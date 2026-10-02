@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Gradle wrapper script
+DIRNAME="`dirname "$0"`"
+cd "$DIRNAME" || exit
+exec gradle assembleDebug "$@"

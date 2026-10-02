@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="uk"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ESP32 Simulator + Virtual Phone</title>
+<style>
+:root{--bg:#0b0f1a;--pn:#161c2e;--ln:#2a3454;--fg:#e8ecf8;--ac:#3fb950;--bl:#4da3ff;--yl:#ffd83b;--rd:#ff4444;box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;overflow:hidden}
+body{display:flex;flex-direction:column}
+button,select,input{font:inherit;font-size:13px;background:var(--pn);color:var(--fg);border:1px solid var(--ln);border-radius:6px;padding:5px 9px;cursor:pointer}
+#top{display:flex;gap:6px;padding:6px;align-items:center;border-bottom:1px solid var(--ln);flex-wrap:wrap}
+#run{background:var(--ac);color:#fff;border:0;font-weight:bold}
+#stop{background:#c0392b;color:#fff;border:0}
+#st{font-size:12px;color:#9fb0d8;flex:1;min-width:100px}
+#layout{flex:1;display:flex;min-height:0}
+#left{flex:1;position:relative;display:flex;flex-direction:column;min-width:0}
+#main{flex:1;position:relative;min-height:0}
+.pane{position:absolute;inset:0;display:none}.pane.on{display:block}
+svg{width:100%;height:100%;touch-action:none;background:#0b0f1a;display:block}
+textarea{width:100%;height:100%;box-sizing:border-box;background:#05080f;color:#7fdf9f;border:0;padding:8px;font:12px/1.5 ui-monospace,monospace;resize:none;tab-size:2;outline:0}
+#ser{width:100%;height:100%;overflow:auto;box-sizing:border-box;padding:8px;font:12px ui-monospace,monospace;white-space:pre-wrap;color:#9df29d;background:#05080f}
+#pal{overflow-x:auto;border-top:1px solid var(--ln);padding:5px;display:flex;gap:5px}
+#pal button{white-space:nowrap;font-size:12px;padding:4px 8px}
+#tabs{display:flex;border-top:1px solid var(--ln)}
+#tabs button{flex:1;border-radius:0;border:0;padding:8px}
+#tabs .on{background:var(--bl);color:#000}
+
+/* Right phone panel */
+#right{width:320px;background:#07070d;border-left:1px solid var(--ln);display:flex;flex-direction:column;min-width:0}
+#right-hdr{padding:8px 12px;font-family:'Courier New',monospace;font-size:11px;color:#9fb0d8;border-bottom:1px solid var(--ln);display:flex;justify-content:space-between;align-items:center}
+#phone-wrap{flex:1;padding:14px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;overflow-y:auto}
+.phone{
+ width:260px;height:520px;background:#000;border-radius:36px;padding:12px;box-shadow:0 0 0 3px #222, 0 0 0 5px #111, 0 8px 40px rgba(0,0,0,.8);
+ position:relative;flex-shrink:0
+}
+.phone::before{content:'';position:absolute;top:12px;left:50%;transform:translateX(-50%);width:70px;height:18px;background:#000;border-radius:0 0 14px 14px;z-index:3;box-shadow:0 1px 0 #222}
+.phone-screen{
+ width:100%;height:100%;background:linear-gradient(180deg,#1a1f35 0%,#0a0d18 100%);
+ border-radius:28px;overflow:hidden;position:relative;display:flex;flex-direction:column;
+}
+.phone-status{
+ height:26px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;
+ font-size:9px;color:#fff;font-family:system-ui;font-weight:500;position:relative;z-index:4
+}
+.phone-time{font-weight:600}
+.phone-icons{display:flex;gap:4px;font-size:9px}
+.notif-area{flex:1;padding:8px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.notif-area::-webkit-scrollbar{width:3px}
+.notif-area::-webkit-scrollbar-thumb{background:#3a4568;border-radius:2px}
+.notif{
+ background:rgba(255,255,255,.14);backdrop-filter:blur(12px);
+ border-radius:14px;padding:8px 10px;display:flex;gap:8px;align-items:center;
+ animation:slidein .35s cubic-bezier(.2,.9,.3,1.3);border:1px solid rgba(255,255,255,.08);
+}
+.notif-icon{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;background:linear-gradient(135deg,#4a7dff,#2a4acc)}
+.notif-icon.samsung{background:linear-gradient(135deg,#1f5eff,#0d47d6)}
+.notif-icon.apple{background:linear-gradient(135deg,#e0e0e0,#888);color:#000}
+.notif-icon.google{background:linear-gradient(135deg,#34a853,#1a7330)}
+.notif-icon.xiaomi{background:linear-gradient(135deg,#ff6900,#d94a00)}
+.notif-body{flex:1;min-width:0}
+.notif-title{font-size:10px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notif-sub{font-size:8px;color:rgba(255,255,255,.6);margin-top:1px}
+.notif-time{font-size:7px;color:rgba(255,255,255,.4);align-self:flex-start;flex-shrink:0}
+@keyframes slidein{from{opacity:0;transform:translateY(-16px) scale(.92)}to{opacity:1;transform:translateY(0) scale(1)}}
+.phone-empty{color:rgba(255,255,255,.3);font-size:10px;text-align:center;padding:20px;font-style:italic}
+.notif-count{position:absolute;top:24px;right:16px;background:#ff3b30;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;display:none;z-index:5}
+.notif-count.on{display:block}
+.phone-home-bar{height:4px;width:100px;background:rgba(255,255,255,.4);border-radius:2px;margin:6px auto 8px}
+
+/* OLED color picker */
+#oled-color-bar{padding:6px 10px;border-top:1px solid var(--ln);background:#0a0d18;display:flex;gap:5px;align-items:center;font-size:11px;color:#9fb0d8}
+#oled-color-bar select{font-size:11px;padding:3px 6px}
+
+/* phone toggle button */
+.toggle-btn{font-size:10px;padding:3px 8px;border-radius:5px}
+
+@media (max-width:800px){
+ #layout{flex-direction:column}
+ #right{width:auto;height:280px;border-left:0;border-top:1px solid var(--ln);flex-direction:row}
+ #phone-wrap{flex-direction:row;padding:6px;overflow-x:auto}
+ .phone{width:180px;height:280px;border-radius:24px;padding:6px}
+ .phone::before{width:50px;height:14px;top:6px}
+ .phone-screen{border-radius:20px}
+ .notif-icon{width:22px;height:22px;font-size:12px;border-radius:6px}
+ .notif-title{font-size:8px}
+ .notif-sub{font-size:6px}
+ .phone-status{height:18px;font-size:7px;padding:0 10px}
+ .phone-home-bar{width:60px;margin:3px auto 4px}
+}
+</style>  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#000000">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ESP32 Simulator + Virtual Phone">
+  <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
+</head><body>
+
+<div id="top">
+ <button id="run">▶ Старт</button>
+ <button id="stop">■ Стоп</button>
+ <select id="ex"></select>
+ <button id="rst" title="Очистити схему">🧹</button>
+ <button class="toggle-btn" id="phone-toggle" title="Показати/сховати телефон">📱 Phone</button>
+ <button class="toggle-btn" id="spectrum-toggle" title="nRF24 Spectrum">📡 2.4GHz</button>
+ <div id="st">Готово. Додай деталі, з'єднай піни.</div>
+</div>
+
+<div id="layout">
+ <div id="left">
+  <div id="main">
+   <div class="pane on" id="p0"><svg id="svg" preserveAspectRatio="none"></svg></div>
+   <div class="pane" id="p1"><textarea id="code" spellcheck="false" autocapitalize="off"></textarea></div>
+   <div class="pane" id="p2"><div id="ser"></div></div>
+   <div class="pane" id="p3"><canvas id="spectrum" style="width:100%;height:100%;display:block;background:#05080f"></canvas></div>
+  </div>
+  <div id="pal"></div>
+  <div id="tabs">
+   <button class="on">🔌 Схема</button>
+   <button>📝 Код</button>
+   <button>📟 Serial</button>
+   <button>📡 2.4GHz</button>
+  </div>
+ </div>
+ <div id="right">
+  <div id="right-hdr">
+   <span>📱 Virtual Phone</span>
+   <button class="toggle-btn" onclick="clearNotifs()" style="font-size:9px;padding:2px 6px">🗑 Clear</button>
+  </div>
+  <div id="phone-wrap">
+   <div class="phone">
+    <div class="phone-screen">
+     <div class="phone-status">
+      <span class="phone-time" id="phone-time">12:34</span>
+      <span class="phone-icons">📶 🔋</span>
+     </div>
+     <div class="notif-count" id="notif-count">0</div>
+     <div class="notif-area" id="notif-area">
+      <div class="phone-empty" id="phone-empty">Notifications will appear here...</div>
+     </div>
+     <div class="phone-home-bar"></div>
+    </div>
+   </div>
+  </div>
+  <div id="oled-color-bar">
+   <span>🎨 OLED:</span>
+   <select id="oled-color-sel" onchange="setOledColor(this.value)">
+    <option value="blue">Синій (синій/жовтий)</option>
+    <option value="yellow">Жовтий (жовтий/чорний)</option>
+    <option value="green">Зелений</option>
+    <option value="red">Червоний</option>
+    <option value="cyan">Cyan</option>
+    <option value="white">Білий</option>
+    <option value="orange">Оранжевий</option>
+   </select>
+  </div>
+ </div>
+</div>
+
+<script>
+/* ============= UI setup ============= */
+const $=id=>document.getElementById(id);
+const def={oledColor:'blue'};
+try{const s=localStorage.getItem('sim_ui');if(s)Object.assign(def,JSON.parse(s))}catch(e){}
+$('oled-color-sel').value=def.oledColor;
+
+/* ============= Board defs ============= */
+const mkPins=(R,L)=>{const p={};R.forEach((n,i)=>p[n]=[150,18+i*13]);L.forEach((n,i)=>p[n]=[0,18+i*13]);return p};
+const DEF={
+ uno:{n:'Arduino Uno',w:150,h:205,mcu:1,v:5,pins:mkPins(['5V','GND','D13','D12','D11','D10','D9','D8','D7','D6','D5','D4','D3','D2'],['A0','A1','A2','A3','A4','A5','3V3','VIN'])},
+ esp:{n:'ESP32',w:150,h:205,mcu:1,v:3.3,pins:mkPins(['3V3','GND','G2','G4','G5','G12','G13','G14','G15','G16','G17','G18','G19','G21'],['G22','G23','G25','G26','G27','G32','G33','G34','G35','G36'])},
+ noname:{n:'No-Name ESP32',w:150,h:205,mcu:1,v:3.3,pins:mkPins(['3V3','GND','G2','G4','G5','G12','G13','G14','G15','G16','G17','G18','G19','G21'],['G22','G23','G25','G26','G27','G32','G33','G34','G35','G36'])},
+ nano:{n:'Arduino Nano',w:70,h:180,mcu:1,v:5,pins:(()=>{const p={};['D13','D12','D11','D10','D9','D8','D7','D6','D5','D4','D3','D2','GND'].forEach((n,i)=>p[n]=[0,16+i*12]);['A0','A1','A2','A3','A4','A5','5V','3V3','VIN'].forEach((n,i)=>p[n]=[70,16+i*12]);return p})()},
+ cyd:{n:'CYD ESP32-2432S028R',w:300,h:190,mcu:1,v:3.3,pins:{GND:[300,14],VIN:[300,32],G35:[300,50],G22:[300,68],G21:[300,86],G27:[300,104],'3V3':[300,122]}},
+ nrf:{n:'nRF24L01',w:74,h:44,pins:(()=>{const p={};['VCC','GND','CE','CSN','SCK','MOSI','MISO','IRQ'].forEach((n,i)=>p[n]=[5+i*9,44]);return p})()},
+ dht:{n:'DHT22',w:34,h:46,pins:{VCC:[6,46],DATA:[17,46],GND:[28,46]}},
+ oled:{n:'OLED SSD1306',w:96,h:66,pins:{GND:[12,66],VCC:[36,66],SCL:[60,66],SDA:[84,66]}},
+ lcd:{n:'LCD1602 I2C',w:130,h:60,pins:{GND:[12,60],VCC:[44,60],SDA:[76,60],SCL:[108,60]}},
+ neo:{n:'NeoPixel 8',w:100,h:22,pins:{VCC:[10,22],DIN:[50,22],GND:[90,22]}},
+ led:{n:'LED',w:26,h:44,pins:{A:[5,44],K:[21,44]}},
+ rgb:{n:'RGB LED',w:30,h:50,pins:{R:[4,50],K:[11,50],G:[19,50],B:[26,50]}},
+ res:{n:'Резистор',w:54,h:14,pins:{1:[0,7],2:[54,7]}},
+ btn:{n:'Кнопка',w:34,h:34,pins:{1:[0,17],2:[34,17]}},
+ pot:{n:'Потенціометр',w:44,h:44,pins:{1:[6,44],S:[22,44],2:[38,44]}},
+ buz:{n:'Зумер',w:34,h:34,pins:{'+':[8,34],'-':[26,34]}},
+ srv:{n:'Серво',w:70,h:40,pins:{V:[0,8],G:[0,20],S:[0,32]}},
+ ir:{n:'IR Receiver',w:40,h:40,pins:{VCC:[6,40],GND:[14,40],OUT:[26,40]}}
+};
+const LC=[['#ff3b3b','Червоний',1.9],['#3bff6b','Зелений',2.1],['#4da3ff','Синій',3],['#ffd83b','Жовтий',2.1],['#ffffff','Білий',3]];
+const WC=['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#c77dff','#ff9f43','#00d2d3'];
+
+/* ============= State ============= */
+let parts=[],wires=[],nid=1,sel=null,wireStart=null,drag=null,dirty=1;
+let VB={x:-10,y:0,w:360,h:600};
+let PS={},SA={},ton=null,NV=[],NET=null,sbuf='',sdirty=0;
+const run={on:false,gen:0};
+const byId=i=>parts.find(c=>c.id==i);
+const svg=$('svg');
+
+/* ============= Phone notifications ============= */
+let notifCount=0;
+const NOTIF_MAX=30;
+const NOTIF_TEMPLATES={
+ apple:{icon:'🎧',cls:'apple',title:'AirPods Pro',sub:'Підключити натисніть'},
+ appleMax:{icon:'🎧',cls:'apple',title:'AirPods Max',sub:'Підключити натисніть'},
+ appleTV:{icon:'📺',cls:'apple',title:'Apple TV Setup',sub:'Продовжити налаштування'},
+ samsungBuds:{icon:'🎧',cls:'samsung',title:'Galaxy Buds2',sub:'Торкніться щоб підключити'},
+ samsungWatch:{icon:'⌚',cls:'samsung',title:'Galaxy Watch5',sub:'Новий годинник поруч'},
+ google:{icon:'🎧',cls:'google',title:'Pixel Buds Pro',sub:'Знайдено новий пристрій'},
+ xiaomi:{icon:'⌚',cls:'xiaomi',title:'Mi Band 7',sub:'Підключити?'},
+ beacon:{icon:'📶',cls:'',title:'Free WiFi',sub:'Нова мережа поруч'},
+ default:{icon:'📱',cls:'',title:'Новий пристрій',sub:'Виявлено поруч'}
+};
+function pushNotif(type){
+ const t=NOTIF_TEMPLATES[type]||NOTIF_TEMPLATES.default;
+ const area=$('notif-area');
+ if(notifCount>=NOTIF_MAX){area.removeChild(area.firstChild)}
+ const empty=$('phone-empty');if(empty)empty.remove();
+ const el=document.createElement('div');
+ el.className='notif';
+ const time=new Date();
+ el.innerHTML=`
+  <div class="notif-icon ${t.cls}">${t.icon}</div>
+  <div class="notif-body">
+   <div class="notif-title">${t.title}</div>
+   <div class="notif-sub">${t.sub}</div>
+  </div>
+  <div class="notif-time">${String(time.getHours()).padStart(2,'0')}:${String(time.getMinutes()).padStart(2,'0')}</div>`;
+ area.appendChild(el);
+ area.scrollTop=area.scrollHeight;
+ notifCount++;
+ const c=$('notif-count');c.textContent=notifCount;c.classList.add('on');
+}
+function clearNotifs(){
+ const a=$('notif-area');a.innerHTML='<div class="phone-empty" id="phone-empty">Notifications will appear here...</div>';
+ notifCount=0;$('notif-count').classList.remove('on');
+}
+// clock
+setInterval(()=>{const d=new Date();$('phone-time').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');},5000);
+
+/* ============= OLED color ============= */
+function setOledColor(c){
+ def.oledColor=c;localStorage.setItem('sim_ui',JSON.stringify(def));
+ // update all existing oled displays
+ for(const k in GFX){const g=GFX[k];if(g&&g.mono)g.color=OLED_COLORS[c]||'#8fe3ff';g.d=1}
+ dirty=1;
+}
+const OLED_COLORS={
+ blue:['#000','#8fe3ff'],
+ yellow:['#000','#ffd83b'],
+ green:['#000','#5fff8f'],
+ red:['#000','#ff5f5f'],
+ cyan:['#000','#5fffff'],
+ white:['#000','#ffffff'],
+ orange:['#000','#ff9f43']
+};
+
+/* ============= Resize ============= */
+function fit(){const r=svg.getBoundingClientRect();if(r.width)VB.h=VB.w*r.height/r.width;svg.setAttribute('viewBox',`${VB.x} ${VB.y} ${VB.w} ${VB.h}`);dirty=1}
+addEventListener('resize',fit);
+
+/* ============= Add part ============= */
+const INIT={pir:{latch:true},sw:{latch:true}};
+function add(t,x,y,o){const c=Object.assign({id:nid++,t,x,y,c:0,val:220,v:.5,h:.5,m:0,on:false,latch:false},INIT[t]||{},o||{});parts.push(c);return c}
+
+/* ============= Net solver ============= */
+function netsOf(){const par={};const pins=[];
+ parts.forEach(c=>Object.keys(DEF[c.t].pins).forEach(n=>{const id=c.id+':'+n;par[id]=id;pins.push(id)}));
+ const f=a=>{while(par[a]!==a)a=par[a];return a};
+ wires.forEach(([a,b])=>{if(par[a]!==undefined&&par[b]!==undefined)par[f(a)]=f(b)});
+ const g=parts.filter(c=>DEF[c.t].mcu).map(c=>c.id+':GND');for(let i=1;i<g.length;i++)par[f(g[i])]=f(g[0]);
+ const idx={},net={};let n=0;pins.forEach(p=>{const r=f(p);if(idx[r]===undefined)idx[r]=n++;net[p]=idx[r]});
+ return{net,n,gnd:g.length?net[g[0]]:-1}}
+function gauss(A,n){for(let i=0;i<n;i++){let m=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[m][i]))m=r;[A[i],A[m]]=[A[m],A[i]];const d=A[i][i]||1e-12;
+  for(let r=i+1;r<n;r++){const k=A[r][i]/d;if(k)for(let c=i;c<=n;c++)A[r][c]-=k*A[i][c]}}
+ const x=new Array(n).fill(0);for(let i=n-1;i>=0;i--){let s=A[i][n];for(let c=i+1;c<n;c++)s-=A[i][c]*x[c];x[i]=s/(A[i][i]||1e-12)}return x}
+function solve(){NET=netsOf();const{net,n,gnd}=NET;NV=new Array(n).fill(0);if(gnd<0||!n)return;
+ const G=Array.from({length:n},()=>new Float64Array(n+1));
+ const th=(a,g,v)=>{G[a][a]+=g;G[a][n]+=g*v};
+ const st=(a,b,g)=>{if(a===b)return;G[a][a]+=g;G[b][b]+=g;G[a][b]-=g;G[b][a]-=g};
+ const N=(c,k)=>net[c.id+':'+k],leds=[];
+ for(let i=0;i<n;i++)G[i][i]+=1e-9;
+ for(const c of parts){const d=DEF[c.t];
+  if(d.mcu){th(N(c,'GND'),1e3,0);const p5=N(c,'5V'),p3=N(c,'3V3');if(p5!==undefined)th(p5,1e3,5);if(p3!==undefined)th(p3,1e3,3.3);if(c.t=='cyd')th(N(c,'VIN'),1e3,5);
+   for(const k in d.pins){const s=PS[c.id+':'+k];if(!s)continue;if(s.m=='out')th(N(c,k),1/40,s.v*d.v);else if(s.m=='pu')th(N(c,k),1/20000,d.v)}}
+  else if(c.t=='led')leds.push({c,key:'cur',a:N(c,'A'),k:N(c,'K'),vf:LC[c.c][2]});
+  else if(c.t=='rgb'){[['R','cr',2],['G','cg',3],['B','cb',3]].forEach(([p,key,vf])=>leds.push({c,key,a:N(c,p),k:N(c,'K'),vf}))}
+  else if(c.t=='sw')st(N(c,1),N(c,2),c.on?1e3:1e-9);
+  else if(c.t=='res')st(N(c,1),N(c,2),1/Math.max(c.val,.01));
+  else if(c.t=='btn')st(N(c,1),N(c,2),c.on?1e3:1e-9);
+  else if(c.t=='pot'){st(N(c,1),N(c,'S'),1/(1+1e4*c.v));st(N(c,'S'),N(c,2),1/(1+1e4*(1-c.v)))}
+  else if(c.t=='buz')st(N(c,'+'),N(c,'-'),1/2000);
+  else if(c.t=='srv')st(N(c,'V'),N(c,'G'),1/400)}
+ G[gnd][gnd]+=1e6;
+ let on=leds.map(()=>false),x;
+ for(let it=0;it<10;it++){const A=G.map(r=>Float64Array.from(r));
+  leds.forEach((d,i)=>{if(on[i]){const{a,k,vf}=d,g=1/8;A[a][a]+=g;A[k][k]+=g;A[a][k]-=g;A[k][a]-=g;A[a][n]+=g*vf;A[k][n]-=g*vf}});
+  x=gauss(A,n);const nn=leds.map(d=>x[d.a]-x[d.k]>d.vf);if(nn.every((v,i)=>v==on[i]))break;on=nn}
+ NV=x;leds.forEach((d,i)=>{const I=on[i]?Math.max(0,(x[d.a]-x[d.k]-d.vf)/8):0;d.c[d.key]=I;if(d.key=='cur')d.c.burn=I>.04});
+ for(const c of parts){const g=net[c.id+':GND'],v=net[c.id+':VCC'];c.pw=v!==undefined&&g!==undefined&&x[v]-x[g]>2.8;
+  if(c.t=='nrf'){c.vcc=v!==undefined&&g!==undefined?x[v]-x[g]:0;c.burn=c.vcc>3.6}}}
+const volt=id=>NET&&NET.net[id]!==undefined?NV[NET.net[id]]||0:0;
+
+/* ============= Transpile ============= */
+function transpile(src){
+ src=src.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/.*$/gm,'');
+ src=src.replace(/^\s*#include.*$/gm,'');
+ src=src.replace(/^\s*#define\s+(\w+)\s+(.+)$/gm,'const $1=$2;');
+ const TY='(?:const\\s+)?(?:unsigned\\s+)?(?:int|long|float|bool|boolean|byte|double|String|char|uint8_t|uint16_t|uint32_t)',fns=[];
+ src=src.replace(new RegExp('\\b(?:void|'+TY+')\\s+(\\w+)\\s*\\(([^)]*)\\)\\s*\\{','g'),(m,n,p)=>{fns.push(n);return'async function '+n+'('+p.replace(new RegExp(TY+'\\s*[&*]?\\s*','g'),'')+'){'});
+ src=src.replace(/\b(TFT_eSPI|Adafruit_SSD1306|Adafruit_NeoPixel|DHT|LiquidCrystal_I2C|RF24)\s+(\w+)\s*(?:=\s*\w+\s*\(([^;]*?)\)|\(([^;]*?)\))?\s*;/g,(m,T,n,a,b)=>'let '+n+'=new '+T+'('+(a||b||'')+');');
+ src=src.replace(/\bServo\s+(\w+)\s*;/g,'let $1=new Servo();');
+ src=src.replace(/\b(\w+)\s*\[\s*(\d+)\s*\]\s*;/g,'$1=new Array($2).fill(0);');
+ src=src.replace(new RegExp('\\b'+TY+'\\s+(?=\\w)','g'),'let ');
+ fns.forEach(n=>{src=src.replace(new RegExp('(?<!function )\\b'+n+'\\s*\\(','g'),'await '+n+'(')});
+ return src.replace(/\bdelay\s*\(/g,'await delay(').replace(/\bdelayMicroseconds\s*\(/g,'await delayMicroseconds(')}
+
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const mcu=()=>parts.find(c=>DEF[c.t].mcu);
+const isU=c=>c.t=='uno'||c.t=='nano';
+const pname=(c,n)=>isU(c)?(n>=14?'A'+(n-14):'D'+n):'G'+n;
+const pid=n=>{const c=mcu();return c?c.id+':'+pname(c,n):null};
+const Fmt=x=>typeof x=='number'&&!Number.isInteger(x)?x.toFixed(2):x;
+function audio(f){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(osc){osc.stop();osc=null}if(f>0){osc=AC.createOscillator();const g=AC.createGain();g.gain.value=.05;osc.type='square';osc.frequency.value=f;osc.connect(g);g.connect(AC.destination);osc.start()}}catch(e){}}
+let AC,osc;
+class Servo{attach(p){this.p=p}write(a){const id=pid(this.p);if(id&&NET)SA[NET.net[id]]=a}detach(){}}
+const css565=c=>`rgb(${(c>>11&31)*255/31|0},${(c>>5&63)*255/63|0},${(c&31)*255/31|0})`;
+const GFX={},RADIOS=[];
+const fbn=(t,pin,mp)=>{const q=pid(mp);return parts.find(c=>c.t==t&&NET&&q&&NET.net[c.id+':'+pin]!==undefined&&NET.net[c.id+':'+pin]===NET.net[q])};
+
+class Gfx{constructor(t,w,h,mono){this.p=parts.find(c=>c.t==t)||{id:-1};this.mono=mono;this.ts=1;this.tc=mono?1:0xFFFF;this.tb=null;this.cx=0;this.cy=0;this.mk(w,h);this.color=OLED_COLORS[def.oledColor][1]}
+ mk(w,h){const cv=document.createElement('canvas');cv.width=w;cv.height=h;this.cv=cv;this.c=cv.getContext('2d');this.w=w;this.h=h;this.c.fillStyle='#000';this.c.fillRect(0,0,w,h);this.d=1;GFX[this.p.id]=this}
+ col(c){return this.mono?(c?this.color:'#000'):css565(c|0)}
+ rc(c){this.c.fillStyle=this.col(c);this.d=1}
+ init(){return true}begin(){return this.p.id!==-1}setRotation(r){if(!this.mono)this.mk(r%2?320:240,r%2?240:320)}
+ width(){return this.w}height(){return this.h}
+ fillScreen(c){this.rc(c);this.c.fillRect(0,0,this.w,this.h)}clearDisplay(){this.fillScreen(0)}display(){this.d=1}
+ fillRect(x,y,w,h,c){this.rc(c);this.c.fillRect(x,y,w,h)}
+ drawRect(x,y,w,h,c){this.fillRect(x,y,w,1,c);this.fillRect(x,y+h-1,w,1,c);this.fillRect(x,y,1,h,c);this.fillRect(x+w-1,y,1,h,c)}
+ fillRoundRect(x,y,w,h,r,c){this.rc(c);this.c.beginPath();this.c.roundRect?this.c.roundRect(x,y,w,h,r):this.c.rect(x,y,w,h);this.c.fill()}
+ drawPixel(x,y,c){this.fillRect(x,y,1,1,c)}drawFastHLine(x,y,w,c){this.fillRect(x,y,w,1,c)}drawFastVLine(x,y,h,c){this.fillRect(x,y,1,h,c)}
+ drawLine(x0,y0,x1,y1,c){x0|=0;y0|=0;x1|=0;y1|=0;const dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;let e=dx+dy;this.rc(c);for(let i=0;i<2000;i++){this.c.fillRect(x0,y0,1,1);if(x0==x1&&y0==y1)break;const e2=2*e;if(e2>=dy){e+=dy;x0+=sx}if(e2<=dx){e+=dx;y0+=sy}}}
+ fillCircle(x,y,r,c){this.rc(c);for(let j=-r;j<=r;j++){const w=Math.floor(Math.sqrt(r*r-j*j));this.c.fillRect(x-w,y+j,2*w+1,1)}}
+ drawCircle(x,y,r,c){this.rc(c);for(let a=0;a<6.2832;a+=1/Math.max(r,1))this.c.fillRect(Math.round(x+r*Math.cos(a)),Math.round(y+r*Math.sin(a)),1,1)}
+ setTextSize(s){this.ts=s}setTextColor(f,b){this.tc=f;this.tb=b===undefined?null:b}setCursor(x,y){this.cx=x;this.cy=y}setTextDatum(d){this.td=d}setTextFont(){}setFreeFont(){}setTextWrap(){}
+ color565(r,g,b){return(r&248)<<8|(g&252)<<3|b>>3}
+ print(v,s){const k=s||this.ts,t=Fmt(v)+'';this.c.font=`${8*k}px monospace`;this.c.textBaseline='top';for(const ch of t){if(ch=='\n'){this.cx=0;this.cy+=8*k;continue}
+  if(this.cx+6*k>this.w){this.cx=0;this.cy+=8*k}
+  if(this.tb!==null){this.c.fillStyle=this.col(this.tb);this.c.fillRect(this.cx,this.cy,6*k,8*k)}
+  this.c.fillStyle=this.col(this.tc);this.c.fillText(ch,this.cx,this.cy);this.cx+=6*k}this.d=1}
+ println(v=''){this.print(v);this.cx=0;this.cy+=8*this.ts}
+ write(v){this.print(typeof v=='number'?String.fromCharCode(v):v)}
+ drawString(s,x,y,f){const k=this.ts*({2:1.6,4:2.6}[f]||1),t=Fmt(s)+'';this.cx=x;this.cy=y;this.print(t,k);return t.length*6*k}
+ drawCentreString(s,x,y,f){const t=Fmt(s)+'',w=t.length*6*this.ts;this.cx=x-w/2;this.cy=y;this.print(t);return w}
+ textWidth(s){return(s+'').length*6*this.ts}}
+class TFT_eSPI extends Gfx{constructor(){super('cyd',240,320,0)}}
+class Adafruit_SSD1306 extends Gfx{constructor(w,h){super('oled',w||128,h||64,1)}}
+
+/* ============= nRF24 ============= */
+class RF24{
+ constructor(ce,csn){this.ce=ce;this.csn=csn;this.l=0;this.rx=[];this.ok=false;this.m=parts.find(c=>c.t=='nrf');RADIOS.push(this);this.ch=76;this.spectrum=new Array(126).fill(0)}
+ begin(){const m=this.m,c=mcu();solve();if(!m){sbuf+='[nRF24] модуль не додано\n';sdirty=1;return false}
+  const u=isU(c),n=NET.net,mp=k=>n[c.id+':'+k],ok1=(a,b)=>n[m.id+':'+a]!==undefined&&n[m.id+':'+a]===(typeof b=='number'?n[pid(b)]:mp(b));
+  const miss=[];if(!m.pw)miss.push('живлення VCC/GND (3.3В)');if(m.burn)miss.push('VCC>3.6В — згорів!');
+  if(!ok1('CE',this.ce))miss.push('CE');if(!ok1('CSN',this.csn))miss.push('CSN');
+  [['SCK',u?'D13':'G18'],['MOSI',u?'D11':'G23'],['MISO',u?'D12':'G19']].forEach(([a,b])=>{if(!ok1(a,b))miss.push(a+'→'+b)});
+  if(miss.length){sbuf+="[nRF24] немає зв'язку: "+miss.join(', ')+'\n';sdirty=1;return false}this.ok=true;return true}
+ setPALevel(){}setDataRate(){}setChannel(c){this.ch=c}setRetries(){}setAutoAck(){}enableDynamicPayloads(){}
+ openWritingPipe(a){this.wa=a+''}openReadingPipe(n,a){this.ra=a+''}
+ startListening(){this.l=1}stopListening(){this.l=0}isChipConnected(){return this.ok}
+ write(v){if(!this.ok||this.l)return false;sbuf+='📡 TX → '+Fmt(v)+'\n';sdirty=1;return true}
+ available(){return false}read(){return 0}
+ testCarrier(){if(!this.ok)return 0;this.spectrum[this.ch]=Math.min(255,this.spectrum[this.ch]+50);return 1}}
+function scanSpectrum(){
+ const nrf=parts.find(c=>c.t=='nrf');if(!nrf||!nrf.pw)return;
+ const now=performance.now();
+ for(const r of RADIOS){
+  if(!r.ok)continue;
+  // add peaks near common WiFi channels (2.4GHz: WiFi ch1=2402, ch6=2437, ch13=2472, BLE adv=37/38/39)
+  // nRF ch = (freq - 2400) MHz  → ch 2=ch1 WiFi? Let's just simulate
+  const peaks=[
+   {ch:2+Math.floor(Math.random()*4),w:3},{ch:26+Math.floor(Math.random()*4),w:4},
+   {ch:61+Math.floor(Math.random()*4),w:4},{ch:0,w:2},{ch:12,w:2},{ch:39,w:2}
+  ];
+  for(let i=0;i<r.spectrum.length;i++)r.spectrum[i]*=0.88;
+  for(const p of peaks){
+   const c=Math.floor(p.ch+Math.random()*p.w);
+   if(c>=0&&c<r.spectrum.length)r.spectrum[c]=Math.min(255,r.spectrum[c]+(60+Math.random()*120));
+  }
+ }
+}
+
+/* ============= BLE sim ============= */
+const BLE_DEVICES=[
+ {name:'AirPods Pro',addr:'A4:83:E7:12:34:56',rssi:-45,type:'apple'},
+ {name:'AirPods Max',addr:'A4:83:E7:98:76:54',rssi:-52,type:'apple'},
+ {name:'AirTag',addr:'7C:2E:0D:AA:BB:CC',rssi:-60,type:'airtag'},
+ {name:'Galaxy Buds2',addr:'B8:BB:AF:11:22:33',rssi:-62,type:'samsung'},
+ {name:'Galaxy Watch5',addr:'B8:BB:AF:44:55:66',rssi:-68,type:'samsung'},
+ {name:'Pixel Buds Pro',addr:'F4:F5:D8:AA:BB:CC',rssi:-58,type:'google'},
+ {name:'Mi Band 7',addr:'C8:47:8C:11:22:33',rssi:-70,type:'xiaomi'},
+ {name:'Flipper Zero',addr:'80:E1:26:00:11:22',rssi:-55,type:'flipper'},
+ {name:'Tile Mate',addr:'CC:78:AB:44:55:66',rssi:-73,type:'tile'},
+ {name:'SmartTag2',addr:'5C:0A:5B:77:88:99',rssi:-66,type:'samsung'},
+ {name:'HC-05',addr:'98:D3:31:AA:BB:CC',rssi:-60,type:'skimmer'},
+ {name:'Flock Cam',addr:'70:C9:4E:33:44:55',rssi:-74,type:'flock'}
+];
+let bleReady=false;
+class NimBLEAddress{constructor(a){this._a=(typeof a==='object'&&a.addr)?a.addr:String(a)}toString(){return this._a}}
+class NimBLEAdvertisedDevice{constructor(d){this._name=d.name;this._addr=new NimBLEAddress(d.addr);this._rssi=d.rssi;this._type=d.type}
+ getName(){return this._name}getAddress(){return this._addr}getRSSI(){return this._rssi}getAddressType(){return 1}haveName(){return this._name.length>0}
+ haveServiceUUID(){return false}haveManufacturerData(){return false}getPayloadLength(){return 31}getPayload(){return new Uint8Array(31)}getType(){return this._type}}
+class NimBLEScanResults{constructor(arr){this._arr=arr}getCount(){return this._arr.length}getDevice(i){return this._arr[i]||null}}
+class NimBLEScan{constructor(){this._r=[]}
+ setActiveScan(v){}setInterval(v){}setWindow(v){}setDuplicateFilter(v){}setScanCallbacks(cb){}
+ start(duration,cont){if(!bleReady){sbuf+='[BLE] Стек не ініціалізовано\n';sdirty=1;return new NimBLEScanResults([])}
+  this._r=BLE_DEVICES.map(d=>new NimBLEAdvertisedDevice({name:d.name,addr:d.addr,rssi:Math.max(-95,Math.min(-30,d.rssi+Math.round((Math.random()-0.5)*8))),type:d.type}));
+  sbuf+=`[BLE] Сканування ${duration/1000|0}с → ${this._r.length}\n`;sdirty=1;
+  return new NimBLEScanResults(this._r)}
+ stop(){}clearResults(){this._r=[]}getResults(d,c){return this.start(d,c)}}
+class NimBLEAdvertising{
+ constructor(){this.t0=0}
+ start(){this.t0=performance.now();sbuf+='[BLE] Advertising START\n';sdirty=1;return true}
+ stop(){}
+ setAdvertisementData(d){this.advData=d;this.parsePayload()}
+ parsePayload(){const buf=this.advData&&this.advData._raw;if(!buf)return;
+  // Detect Apple: 4C 00, Samsung: 75 00, Google: 2C FE
+  if(buf.length>=4){
+   if(buf[0]===0x1E&&buf[2]===0x4C){this.detect('apple')}
+   else if(buf[0]===27&&buf[2]===0x75){this.detect('samsung')}
+   else if(buf[0]===0x03&&buf[2]===0x2C&&buf[3]===0xFE){this.detect('google')}
+  }}
+ detect(t){
+  const now=performance.now();
+  if(now-this.t0<100)return; // throttle
+  this.t0=now;
+  let kind='default';
+  if(t==='apple')kind=Math.random()<0.5?'apple':(Math.random()<0.5?'appleMax':'appleTV');
+  else if(t==='samsung')kind=Math.random()<0.5?'samsungBuds':'samsungWatch';
+  else if(t==='google')kind=Math.random()<0.5?'google':'google';
+  pushNotif(kind);
+ }
+ setMinInterval(v){}setMaxInterval(v){}setName(n){}isAdvertising(){return true}}
+
+const NimBLEDevice={init(name){bleReady=true;sbuf+=`[BLE] Ініціалізовано: ${name||'ESP32'}\n`;sdirty=1;return true},
+ deinit(){bleReady=false},setPower(p){},getScan(){return new NimBLEScan()},
+ createServer(){return{getAdvertising:()=>new NimBLEAdvertising()}},setOwnAddrType(t){}};
+
+/* ============= Spam sim ============= */
+const SPAM_SSIDS=["Free WiFi","FBI Surveillance Van","NSA Listening Post","Skibidi Toilet","Never Gonna Give You Up","Rickroll 5G","Free Candy Van","Area 51","CIA_Backup","Password123","It Hurts When IP","Get Off My LAN"];
+const SPAM_BLE=["AirPods Pro","AirPods Max","Galaxy Buds2","Pixel Buds Pro","Free VBucks"];
+let spamRunning=false,spamCount=0,spamTimer=null;
+const SpamSim={
+ startBLE(proto){spamRunning=true;spamCount=0;sbuf+=`[SPAM] BLE started (proto=${proto})\n`;sdirty=1;
+  spamTimer=setInterval(()=>{if(!spamRunning)return;
+   const dev=SPAM_BLE[Math.floor(Math.random()*SPAM_BLE.length)];
+   const mac=Array.from({length:6},()=>Math.floor(Math.random()*256).toString(16).padStart(2,'0')).join(':');
+   sbuf+=`[BLE] ${dev} ${mac}\n`;spamCount++;
+   if(spamCount%5===0){
+    const kind=Math.random()<0.5?'samsungBuds':(Math.random()<0.5?'apple':'google');
+    pushNotif(kind);
+   }
+   if(spamCount%20===0)sbuf+=`[SPAM] Відправлено: ${spamCount}\n`;sdirty=1},80)},
+ startBeacon(ch){spamRunning=true;spamCount=0;sbuf+=`[SPAM] Beacon started (ch=${ch})\n`;sdirty=1;
+  spamTimer=setInterval(()=>{if(!spamRunning)return;
+   const ssid=SPAM_SSIDS[Math.floor(Math.random()*SPAM_SSIDS.length)];
+   const mac=Array.from({length:6},()=>Math.floor(Math.random()*256).toString(16).padStart(2,'0')).join(':');
+   sbuf+=`[BCN] "${ssid}" ${mac} ch=${ch}\n`;spamCount++;
+   if(spamCount%4===0)pushNotif('beacon');
+   if(spamCount%20===0)sbuf+=`[SPAM] Відправлено: ${spamCount}\n`;sdirty=1},50)},
+ stop(){spamRunning=false;if(spamTimer){clearInterval(spamTimer);spamTimer=null}sbuf+=`[SPAM] Зупинено. Всього: ${spamCount}\n`;sdirty=1}};
+
+/* ============= Deauth Detector ============= */
+const FAKE_ATTACKERS=[
+ {mac:'AA:BB:CC:11:22:33',ch:1,rssi:-40},
+ {mac:'DE:AD:BE:EF:00:01',ch:6,rssi:-55},
+ {mac:'12:34:56:78:9A:BC',ch:11,rssi:-70}
+];
+let detRunning=false,detTimer=null,detCount=0;
+const DeauthDetector={
+ start(){detRunning=true;detCount=0;sbuf+='[DET] Детектор deauth запущено (пасивний)\n';sdirty=1;
+  detTimer=setInterval(()=>{if(!detRunning)return;
+   if(Math.random()<0.4){const a=FAKE_ATTACKERS[Math.floor(Math.random()*FAKE_ATTACKERS.length)];
+    sbuf+=`[DET] ⚠ DEAUTH від ${a.mac} ch=${a.ch} rssi=${a.rssi}\n`;detCount++;sdirty=1}},700)},
+ stop(){detRunning=false;if(detTimer){clearInterval(detTimer);detTimer=null}sbuf+=`[DET] Зупинено. Виявлено: ${detCount}\n`;sdirty=1}};
+
+/* ============= IR Decoder ============= */
+let irRunning=false,irTimer=null;
+const IR_CODES=[
+ {proto:'NEC',addr:'0x00FF',cmd:'0x45 (Power)'},
+ {proto:'NEC',addr:'0x00FF',cmd:'0x46 (Vol+)'},
+ {proto:'Samsung',addr:'0x0707',cmd:'0x02 (Power)'},
+ {proto:'Sony',addr:'0x01',cmd:'0x15 (Power)'},
+ {proto:'RC5',addr:'0x00',cmd:'0x0C (Power)'}
+];
+const IRDecoder={
+ start(){irRunning=true;sbuf+='[IR] Декодер запущено\n';sdirty=1;
+  irTimer=setInterval(()=>{if(!irRunning)return;
+   if(Math.random()<0.3){const c=IR_CODES[Math.floor(Math.random()*IR_CODES.length)];
+    sbuf+=`[IR] ${c.proto} addr=${c.addr} cmd=${c.cmd}\n`;sdirty=1}},1500)},
+ stop(){irRunning=false;if(irTimer){clearInterval(irTimer);irTimer=null}sbuf+='[IR] Зупинено\n';sdirty=1}};
+
+/* ============= Ext API ============= */
+const nopL={begin(){},beginTransmission(){},endTransmission(){return 0},transfer(){return 0}};
+const EXT={TFT_eSPI,Adafruit_SSD1306,Adafruit_NeoPixel:class{constructor(n,p){this.n=n;this.p=p;this.px=Array(n).fill(0);this.br=255}begin(){}setBrightness(b){this.br=b}Color(r,g,b){return(r<<16)|(g<<8)|b}setPixelColor(i,r,g,b){this.px[i]=g===undefined?r:this.Color(r,g,b)}fill(c){this.px.fill(c)}clear(){this.px.fill(0)}numPixels(){return this.n}show(){}},
+ DHT:class{constructor(p){this.p=p}begin(){}readTemperature(){return 22}readHumidity(){return 55}},
+ LiquidCrystal_I2C:class{constructor(){this.m=parts.find(c=>c.t=='lcd');this.r=0;this.c=0;if(this.m)this.m.lcd=['','']}init(){}begin(){}backlight(){if(this.m)this.m.bl=1}clear(){if(this.m)this.m.lcd=['',''];this.r=0;this.c=0}setCursor(c,r){this.c=c;this.r=r}print(v){if(!this.m)return;for(const ch of Fmt(v)+''){const L=(this.m.lcd[this.r]||'').padEnd(16);this.m.lcd[this.r]=L.slice(0,this.c)+ch+L.slice(this.c+1);this.c++}}},
+ RF24,NimBLEDevice,NimBLEScan,NimBLEAdvertisedDevice,NimBLEAddress,NimBLEAdvertising,
+ DeauthDetector,SpamSim,IRDecoder,
+ Wire:nopL,SPI:nopL,
+ TFT_BLACK:0,TFT_DARKGREEN:992,TFT_BLUE:31,TFT_GREEN:2016,TFT_CYAN:2047,TFT_RED:63488,
+ TFT_YELLOW:65504,TFT_WHITE:65535,TFT_NAVY:15,TFT_ORANGE:64928,
+ SSD1306_WHITE:1,SSD1306_BLACK:0,WHITE:1,BLACK:0,SSD1306_SWITCHCAPVCC:2,
+ DHT22:22,DHT11:11,NEO_GRB:0,NEO_KHZ800:0,
+ RF24_PA_MAX:3,RF24_1MBPS:0,
+ isnan:x=>Number.isNaN(x),
+ async delayMicroseconds(us){if(us>=1000)await sleep(us/1000)}};
+
+const API={
+ HIGH:1,LOW:0,OUTPUT:1,INPUT:0,INPUT_PULLUP:2,LED_BUILTIN:2,A0:14,PI:Math.PI,Servo,
+ pinMode(p,m){const c=mcu(),id=pid(p);if(!id)return;PS[id]=m==1?{m:'out',v:0}:m==2?{m:'pu',v:0}:undefined;if(!PS[id])delete PS[id]},
+ digitalWrite(p,v){const s=PS[pid(p)];if(s&&s.m=='out')s.v=v?1:0},
+ analogWrite(p,v){let id=pid(p);if(id&&!PS[id])PS[id]={m:'out',v:0};if(PS[id])PS[id].v=Math.max(0,Math.min(255,v))/255},
+ digitalRead(p){solve();const c=mcu();if(c.t=='cyd'&&p==0)return c.on?0:1;return volt(pid(p))>(isU(c)?2.5:1.65)?1:0},
+ analogRead(p){solve();const c=mcu(),d=DEF[c.t];if(c.t=='cyd'&&p==34)return Math.round(c.v*4095);return Math.round(Math.max(0,Math.min(1,volt(pid(p))/d.v))*(isU(c)?1023:4095))},
+ async delay(ms){await sleep(ms);if(!run.on)throw'STOP'},
+ millis:()=>Math.floor(performance.now()-run.t0),micros:()=>Math.floor((performance.now()-run.t0)*1000),
+ map:(x,a,b,c,d)=>(x-a)*(d-c)/(b-a)+c,constrain:(x,a,b)=>Math.min(b,Math.max(a,x)),
+ abs:Math.abs,min:Math.min,max:Math.max,sqrt:Math.sqrt,pow:Math.pow,sin:Math.sin,cos:Math.cos,
+ random:(a,b)=>b===undefined?Math.floor(Math.random()*a):a+Math.floor(Math.random()*(b-a)),randomSeed(){},
+ tone(p,f){ton=(mcu().t=='cyd'&&p==26)?'cyd':null;audio(f)},noTone(){ton=null;audio(0)},
+ ...EXT,
+ Serial:{begin(){},available(){return 0},read(){return -1},flush(){},print(x){sbuf+=Fmt(x);sdirty=1},println(x=''){sbuf+=Fmt(x)+'\n';sdirty=1}}};
+
+/* ============= Start sim ============= */
+async function startSim(){stopSim();const m=mcu();if(!m){st('Додай плату');return}
+ let fn;try{const src=transpile($('code').value);
+  fn=new(Object.getPrototypeOf(async function(){}).constructor)(...Object.keys(API),src+'\n;return[typeof setup=="function"?setup:null,typeof loop=="function"?loop:null]')}
+ catch(e){sbuf+='Помилка коду: '+e.message+'\n';sdirty=1;tab(2);return}
+ RADIOS.length=0;for(const k in GFX)delete GFX[k];parts.forEach(c=>{c.lcd=['',''];c.px=[];c.bl=1});
+ run.on=true;const g=++run.gen;run.t0=performance.now();sbuf='';sdirty=1;st('▶ Працює');
+ try{const[s,l]=await fn(...Object.values(API));if(s)await s();
+  while(run.on&&g==run.gen){if(l)await l();await sleep(0)}}
+ catch(e){if(e!=='STOP'&&g==run.gen){sbuf+='Помилка: '+(e.message||e)+'\n';sdirty=1}}}
+function stopSim(){run.on=false;run.gen++;PS={};SA={};ton=null;audio(0);if(detTimer)clearInterval(detTimer);if(spamTimer)clearInterval(spamTimer);if(irTimer)clearInterval(irTimer);solve();dirty=1;st('■ Зупинено')}
+const st=t=>$('st').textContent=t;
+
+/* ============= Render ============= */
+function pinXY(id){const[i,n]=id.split(':'),c=byId(i);if(!c)return null;const p=DEF[c.t].pins[n];return p?[c.x+p[0],c.y+p[1]]:null}
+const fmtR=v=>v>=1000?(v/1000)+'kΩ':v+'Ω';
+const PINL=d=>{let s='';for(const k in d.pins){const[x,y]=d.pins[k],q=x>=d.w-1;s+=`<rect x="${q?x-9:x-1}" y="${y-5}" width="10" height="10" fill="#111" opacity=".55"/><text x="${q?x-11:x+11}" y="${y+2.5}" font-size="7" fill="#fff" text-anchor="${q?'end':'start'}">${k}</text>`}return s};
+const TX=(x,y,t,sz,col,a)=>`<text x="${x}" y="${y}" font-size="${sz||7}" fill="${col||'#fff'}" text-anchor="${a||'middle'}">${t}</text>`;
+function scrImg(g,x,y,w,h){if(g.d||!g.url){g.url=g.cv.toDataURL();g.d=0}return`<image href="${g.url}" x="${x}" y="${y}" width="${w}" height="${h}" style="image-rendering:pixelated"/>`}
+function boardBody(c,d){let s='';
+ if(c.t=='uno'){const on=volt(c.id+':D13')>2.5;
+  s=`<rect width="150" height="205" rx="6" fill="#0a6d74" stroke="#0fa"/><rect x="8" y="6" width="38" height="30" fill="#c8c8c8" stroke="#888"/>${TX(27,25,'USB',8,'#333')}<circle cx="62" cy="18" r="7" fill="#d33" stroke="#fff"/>${TX(75,64,'∞ ARDUINO',9)}<circle cx="118" cy="190" r="3.5" fill="${on?'#ffb400':'#553'}"/>`}
+ else if(c.t=='nano')s=`<rect width="70" height="180" rx="4" fill="#1d4fa8" stroke="#6af"/><rect x="21" y="-3" width="28" height="14" fill="#bbb"/><circle cx="35" cy="26" r="5" fill="#ddd"/>${TX(35,118,'NANO',7)}`;
+ else if(c.t=='esp')s=`<rect width="150" height="205" rx="6" fill="#16161d" stroke="#555"/><rect x="52" y="-5" width="46" height="16" rx="2" fill="#c8c8c8"/>${TX(75,7,'USB',6,'#333')}<rect x="14" y="30" width="16" height="12" rx="2" fill="#ddd"/>${TX(22,52,'EN',6)}<rect x="120" y="30" width="16" height="12" rx="2" fill="#ddd"/>${TX(128,52,'BOOT',6)}<rect x="38" y="70" width="74" height="86" fill="#cfd3d8" stroke="#888"/>${TX(75,110,'ESP-WROOM-32',8,'#333')}<circle cx="100" cy="195" r="3" fill="#f33"/>`;
+ else if(c.t=='noname')s=`<rect width="150" height="205" rx="6" fill="#1a1a1a" stroke="#666"/><rect x="52" y="-5" width="46" height="16" rx="2" fill="#999"/>${TX(75,7,'USB',6,'#333')}<rect x="38" y="70" width="74" height="86" fill="#8a8a8a" stroke="#555"/>${TX(75,110,'ESP32',8,'#222')}<circle cx="100" cy="195" r="3" fill="#f33"/>${TX(75,182,'no-name board',6,'#aaa')}`;
+ else{const q=k=>{const p=PS[c.id+':'+k];return p&&p.m=='out'&&p.v<.5},bp=PS[c.id+':G21'],bl=bp&&bp.m=='out'?bp.v:1,g=GFX[c.id];
+  let scr='<rect x="10" y="5" width="240" height="180" fill="#000"/>';
+  if(g){const k=Math.min(240/g.w,180/g.h),w=g.w*k,h=g.h*k;scr+=scrImg(g,10+(240-w)/2,5+(180-h)/2,w,h);if(bl<1)scr+=`<rect x="10" y="5" width="240" height="180" fill="#000" opacity="${1-bl}"/>`}
+  s=`<rect width="300" height="190" rx="8" fill="#d9a520" stroke="#fc6"/><rect x="6" y="2" width="248" height="186" rx="4" fill="#111"/>${scr}<circle cx="277" cy="162" r="8" fill="#222" stroke="${ton==='cyd'?'#ffd83b':'#555'}"/>`}
+ return s+PINL(d)}
+function modBody(c,d){
+ if(c.t=='nrf'){const act=performance.now()-(c.act||0)<200;return`<rect width="74" height="44" rx="3" fill="#2255aa" stroke="#7af"/><rect x="6" y="5" width="22" height="18" fill="#bbb"/>${TX(17,16,'nRF',6,'#333')}<path d="M34 8h6v8h6v-8h6v8h6v-8h6" fill="none" stroke="#d4a017" stroke-width="2"/>${TX(37,34,'nRF24L01',7)}<circle cx="68" cy="8" r="3" fill="${c.burn?'#f33':act?'#ff0':'#3a3'}"/>${c.burn?TX(37,-3,'🔥 VCC>3.6В!',8,'#f55'):''}`}
+ if(c.t=='oled'){const g=GFX[c.id];return`<rect width="96" height="66" rx="3" fill="#1a1a2a" stroke="#68a"/><rect x="8" y="6" width="80" height="40" fill="#000"/>${g&&c.pw?scrImg(g,8,6,80,40):''}${TX(48,56,'SSD1306',6)}`}
+ if(c.t=='dht')return`<rect width="34" height="46" rx="3" fill="#e8eef5" stroke="#9ab"/>${TX(17,36,'DHT22',7,'#333')}`;
+ if(c.t=='lcd'){const L=c.lcd||['',''],ln=i=>(L[i]||'').padEnd(16).slice(0,16).replace(/ /g,'\u00a0');return`<rect width="130" height="60" rx="3" fill="#0a5"/><rect x="8" y="6" width="114" height="34" fill="${c.pw&&c.bl!==0?'#9fd84a':'#3a4a2a'}"/>${c.pw?`<text x="12" y="20" font-size="11" font-family="monospace" fill="#102">${ln(0)}</text><text x="12" y="34" font-size="11" font-family="monospace" fill="#102">${ln(1)}</text>`:''}${TX(65,52,'LCD1602',6)}`}
+ if(c.t=='neo'){const px=c.px||[];return`<rect width="100" height="22" rx="3" fill="#222" stroke="#666"/>${Array.from({length:8},(_,i)=>{const v=px[i]|0,col='rgb('+(v>>16&255)+','+(v>>8&255)+','+(v&255)+')';return`<circle cx="${8+i*12}" cy="9" r="5" fill="${v?col:'#333'}"/>`}).join('')}`}
+ if(c.t=='led'){const col=LC[c.c][0],br=Math.min(1,(c.cur||0)/.012);
+  return`<line x1="5" y1="30" x2="5" y2="44" stroke="#aaa"/><line x1="21" y1="30" x2="21" y2="44" stroke="#aaa"/><path d="M3 30V16a10 10 0 0 1 20 0v14z" fill="${col}" fill-opacity="${.22+.78*br}" stroke="#ccc"/>${br>.02?`<circle cx="13" cy="14" r="${14+12*br}" fill="${col}" opacity="${.4*br}"/>`:''}${c.burn?'<text x="13" y="-2" font-size="9" text-anchor="middle" fill="#f55">🔥</text>':''}`}
+ if(c.t=='res')return`<rect y="1" x="6" width="42" height="12" rx="4" fill="#d9b46a"/><line x1="0" y1="7" x2="6" y2="7" stroke="#aaa"/><line x1="48" y1="7" x2="54" y2="7" stroke="#aaa"/><text x="27" y="-3" font-size="8" text-anchor="middle" fill="#dde">${fmtR(c.val)}</text>`;
+ if(c.t=='btn')return`<rect width="34" height="34" rx="4" fill="#333" stroke="#777"/><circle data-act="1" cx="17" cy="17" r="10" fill="${c.on?'#a00':'#e33'}" stroke="#fff"/>`;
+ if(c.t=='pot')return`<circle cx="22" cy="22" r="20" fill="#2a5a9a" stroke="#9cf"/><line x1="22" y1="22" x2="22" y2="6" stroke="#fff" stroke-width="3" transform="rotate(${c.v*270-135} 22 22)"/><text x="22" y="26" font-size="7" text-anchor="middle" fill="#fff" dy="12">${Math.round(c.v*100)}%</text>`;
+ if(c.t=='buz'){const s=ton!==null;return`<circle cx="17" cy="17" r="15" fill="#222" stroke="${s?'#ffd83b':'#777'}" stroke-width="${s?3:1}"/><circle cx="17" cy="17" r="4" fill="#000"/>`}
+ if(c.t=='srv'){const a=NET&&SA[NET.net[c.id+':S']];const ang=a===undefined?90:a;return`<rect x="8" width="62" height="40" rx="3" fill="#3a6fd8" stroke="#9bf"/><g transform="translate(58 20) rotate(${ang-90})"><line y2="-17" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle r="4" fill="#ddd"/></g><text x="30" y="24" font-size="8" fill="#fff" text-anchor="middle">${Math.round(ang)}°</text>`}
+ if(c.t=='ir')return`<rect width="40" height="40" rx="3" fill="#222" stroke="#666"/><rect x="8" y="6" width="24" height="22" rx="2" fill="#111"/><circle cx="20" cy="17" r="6" fill="#400" stroke="#800"/><circle cx="20" cy="17" r="3" fill="#a00"/>`}
+ return ''}
+function body(c){const d=DEF[c.t];const mb=modBody(c,d);if(mb!==undefined)return mb;
+ if(d.mcu)return boardBody(c,d);
+ return ''}
+function render(){let s='';
+ wires.forEach(([a,b],i)=>{const A=pinXY(a),B=pinXY(b);if(!A||!B)return;const d=`M${A[0]},${A[1]} C${A[0]+40},${A[1]} ${B[0]-40},${B[1]} ${B[0]},${B[1]}`,on=sel&&sel.w===i;
+  s+=`<path d="${d}" fill="none" stroke="${on?'#fff':WC[i%7]}" stroke-width="${on?3:2}" stroke-linecap="round"/><path data-w="${i}" d="${d}" fill="none" stroke="transparent" stroke-width="12"/>`});
+ for(const c of parts){const d=DEF[c.t],on=sel&&sel.c==c.id;
+  s+=`<g data-id="${c.id}" transform="translate(${c.x} ${c.y})">${on?`<rect x="-4" y="-4" width="${d.w+8}" height="${d.h+8}" fill="none" stroke="#4da3ff" stroke-dasharray="3"/>`:''}${body(c)}</g>`}
+ for(const c of parts)for(const k in DEF[c.t].pins){const id=c.id+':'+k,[x,y]=pinXY(id);if(!DEF[c.t].mcu&&!['res','btn','sw','led','buz'].includes(c.t))s+=`<text x="${x}" y="${y<=c.y+1?y-5:y+9}" font-size="5" fill="#9cb" text-anchor="middle">${k}</text>`;s+=`<circle data-pin="${id}" cx="${x}" cy="${y}" r="${wireStart==id?5:3.2}" fill="${wireStart==id?'#fff':'#e8c547'}" stroke="#000" stroke-width=".6"/>`}
+ svg.innerHTML=s}
+
+/* ============= Interaction ============= */
+function pt(e){const r=svg.getBoundingClientRect();return[VB.x+(e.clientX-r.left)/r.width*VB.w,VB.y+(e.clientY-r.top)/r.height*VB.h]}
+function pinTap(id){if(!wireStart){wireStart=id;solve();st(id.split(':')[1]+': '+volt(id).toFixed(2)+' В');}
+ else{if(wireStart!=id&&!wires.some(([a,b])=>(a==wireStart&&b==id)||(a==id&&b==wireStart))){wires.push([wireStart,id]);save()}wireStart=null;st("З'єднано")}dirty=1}
+svg.addEventListener('pointerdown',e=>{svg.setPointerCapture(e.pointerId);const[px,py]=pt(e),t=e.target;
+ const pin=t.closest('[data-pin]');if(pin){pinTap(pin.dataset.pin);return}
+ const wr=t.closest('[data-w]');if(wr){sel={w:+wr.dataset.w};updSel();dirty=1;return}
+ const act=t.closest('[data-act]'),g=t.closest('[data-id]');
+ if(g){const c=byId(g.dataset.id);sel={c:c.id};wireStart=null;if(act){c.on=c.latch?!c.on:true;drag={press:c}}else drag={c,dx:px-c.x,dy:py-c.y};updSel();dirty=1;return}
+ sel=null;wireStart=null;drag={pan:1,sx:e.clientX,sy:e.clientY,vx:VB.x,vy:VB.y};updSel();dirty=1});
+svg.addEventListener('pointermove',e=>{if(!drag)return;if(drag.c){const[px,py]=pt(e);drag.c.x=Math.round((px-drag.dx)/2)*2;drag.c.y=Math.round((py-drag.dy)/2)*2;dirty=1}
+ else if(drag.pan){const r=svg.getBoundingClientRect();VB.x=drag.vx-(e.clientX-drag.sx)/r.width*VB.w;VB.y=drag.vy-(e.clientY-drag.sy)/r.height*VB.h;fit()}});
+const up=()=>{if(drag&&drag.press&&!drag.press.latch)drag.press.on=false;if(drag&&drag.c)save();drag=null;dirty=1};
+svg.addEventListener('pointerup',up);svg.addEventListener('pointercancel',up);
+
+function updSel(){const b=$('sel');b.innerHTML='';if(!sel){b.textContent='Тап по деталі — вибір. Тап по піну — дріт.';return}
+ if(sel.w!==undefined){b.append('Дріт ');const d=document.createElement('button');d.textContent='🗑';d.onclick=()=>{wires.splice(sel.w,1);sel=null;save();updSel();dirty=1};b.append(d);return}
+ const c=byId(sel.c);b.append(DEF[c.t].n+' ');
+ if(c.t=='res'){const s=document.createElement('select');[100,220,330,470,1000,2200,4700,10000].forEach(v=>{const o=new Option(fmtR(v),v);s.add(o)});s.value=c.val;s.onchange=()=>{c.val=+s.value;save();dirty=1};b.append(s)}
+ if(c.t=='led'){const s=document.createElement('select');LC.forEach((l,i)=>s.add(new Option(l[1],i)));s.value=c.c;s.onchange=()=>{c.c=+s.value;save();dirty=1};b.append(s)}
+ const rg=(k,lbl)=>{const r=document.createElement('input');r.type='range';r.min=0;r.max=100;r.value=c[k]*100;r.oninput=()=>{c[k]=r.value/100;dirty=1};r.onchange=save;b.append(lbl+' ');b.append(r)};
+ if(['pot','dht','cyd'].includes(c.t))rg('v',{dht:'Темп.',cyd:'Світло'}[c.t]||'');
+ if(c.t=='dht')rg('h','Волога');
+ const d=document.createElement('button');d.textContent='🗑';d.onclick=()=>{wires=wires.filter(([a,z])=>a.split(':')[0]!=c.id&&z.split(':')[0]!=c.id);parts=parts.filter(p=>p!=c);sel=null;save();updSel();dirty=1};b.append(d)}
+
+/* ============= Palette ============= */
+[['cyd','CYD'],['uno','Uno'],['nano','Nano'],['esp','ESP32'],['noname','No-Name'],['nrf','nRF24'],['oled','OLED'],['lcd','LCD1602'],['neo','NeoPixel'],['led','LED'],['rgb','RGB'],['res','Резистор'],['btn','Кнопка'],['pot','Потенц.'],['buz','Зумер'],['srv','Серво'],['dht','DHT22'],['ir','IR RX']].forEach(([t,n])=>{
+ const b=document.createElement('button');b.textContent='＋ '+n;b.onclick=()=>{const k=parts.length*6%50;const c=add(t,Math.round(VB.x+20+k),Math.round(VB.y+20+k),{});sel={c:c.id};updSel();save();dirty=1;tab(0)};$('pal').append(b)});
+
+/* ============= Tabs ============= */
+const tabs=[...$('tabs').children];
+function tab(i){tabs.forEach((b,j)=>b.classList.toggle('on',i==j));[0,1,2,3].forEach(j=>$('p'+j).classList.toggle('on',i==j));if(i==0)fit();if(i===3)drawSpectrum()}
+tabs.forEach((b,i)=>b.onclick=()=>tab(i));
+$('run').onclick=()=>{tab(0);startSim()};$('stop').onclick=stopSim;
+$('rst').onclick=()=>{stopSim();parts=[];wires=[];sel=null;nid=1;sbuf='';sdirty=1;updSel();save();dirty=1};
+$('phone-toggle').onclick=()=>{const r=$('right');r.style.display=r.style.display==='none'?'flex':'none';setTimeout(fit,50)};
+$('spectrum-toggle').onclick=()=>tab(3);
+
+/* ============= Spectrum canvas ============= */
+const spc=$('spectrum'),spctx=spc.getContext('2d');
+function drawSpectrum(){
+ const r=spc.getBoundingClientRect();
+ if(spc.width!==r.width||spc.height!==r.height){spc.width=r.width;spc.height=r.height}
+ const w=spc.width,h=spc.height;
+ spctx.fillStyle='#05080f';spctx.fillRect(0,0,w,h);
+ const nrf=parts.find(c=>c.t=='nrf');
+ if(!nrf||!nrf.pw){
+  spctx.fillStyle='#5a6a8a';spctx.font='16px system-ui';spctx.textAlign='center';
+  spctx.fillText('Додай nRF24L01 на схему і підключи живлення',w/2,h/2);
+  spctx.font='12px system-ui';spctx.fillStyle='#405070';
+  spctx.fillText('(VCC → 3V3, GND → GND)',w/2,h/2+24);
+  return;
+ }
+ const r0=RADIOS.find(r=>r.ok);if(!r0){spctx.fillStyle='#5a6a8a';spctx.font='16px system-ui';spctx.textAlign='center';spctx.fillText('nRF24 не ініціалізовано. Запусти скетч.',w/2,h/2);return}
+ const spectrum=r0.spectrum;
+ const padL=40,padB=30,padT=20,padR=10;
+ const gw=w-padL-padR,gh=h-padT-padB;
+ // grid
+ spctx.strokeStyle='#1a2238';spctx.lineWidth=1;
+ for(let i=0;i<=10;i++){const y=padT+gh*i/10;spctx.beginPath();spctx.moveTo(padL,y);spctx.lineTo(w-padR,y);spctx.stroke()}
+ // bars
+ for(let i=0;i<spectrum.length;i++){
+  const x=padL+gw*i/spectrum.length;
+  const bh=gh*(spectrum[i]/255);
+  const hue=200-200*(spectrum[i]/255);
+  spctx.fillStyle=`hsl(${hue},80%,55%)`;
+  spctx.fillRect(x,padT+gh-bh,gw/spectrum.length-0.5,bh);
+ }
+ // labels
+ spctx.fillStyle='#5a6a8a';spctx.font='10px monospace';spctx.textAlign='center';
+ for(let ch=0;ch<=125;ch+=10){
+  const x=padL+gw*ch/spectrum.length;
+  spctx.fillText(ch,x,h-padB+14);
+ }
+ spctx.textAlign='right';
+ for(let i=0;i<=5;i++){
+  const y=padT+gh*i/5;
+  spctx.fillText(255-(i*51),padL-6,y+3);
+ }
+ spctx.textAlign='left';spctx.fillStyle='#7fdf9f';spctx.font='bold 12px monospace';
+ spctx.fillText('2.4 GHz Spectrum — nRF24L01',padL,14);
+ spctx.fillStyle='#4da3ff';
+ spctx.fillText('WiFi ch1≈2  ch6≈26  ch13≈60  BLE adv≈0/12/39',padL,padT-4);
+ // currently tuned channel
+ const curCh=r0.ch;
+ const xc=padL+gw*curCh/spectrum.length;
+ spctx.strokeStyle='#ffd83b';spctx.lineWidth=1;spctx.beginPath();spctx.moveTo(xc,padT);spctx.lineTo(xc,padT+gh);spctx.stroke();
+ spctx.fillStyle='#ffd83b';spctx.font='10px monospace';spctx.textAlign='center';
+ spctx.fillText('ch'+curCh,xc,padT+10);
+}
+
+/* ============= Save/Load ============= */
+function save(){try{localStorage.setItem('sim1',JSON.stringify({parts,wires,nid,code:$('code').value}))}catch(e){}}
+$('code').oninput=save;
+
+/* ============= Examples ============= */
+const E='esp';
+const EX={
+'Твій ESP32 ATTACK v6.5':{p:[[E,10,20],['oled',260,60]],w:[['1:GND','2:GND'],['1:3V3','2:VCC'],['1:G21','2:SDA'],['1:G22','2:SCL']],code:`// Твій код v6.5 — просто вставляй як є
+// Симулятор підтримує: WiFi, NimBLE, OLED, кнопки, ігри
+
+#include <WiFi.h>
+#include <Wire.h>
+#include <Adafruit_SSD1306.h>
+
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
+bool oledReady = false;
+
+int menuSelection = 0;
+const char* MENU_NAMES[] = {"Apple","Samsung","Android","All","Beacon","Both","GAMES","START!"};
+const int MENU_COUNT = 8;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22);
+  if (display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    oledReady = true;
+    Serial.println("OLED OK");
+  }
+  pinMode(0, INPUT_PULLUP);
+  oledDrawConfig();
+}
+
+void loop() {
+  static int tick = 0;
+  tick++;
+  if (tick % 20 == 0) {
+    oledDrawConfig();
+  }
+  delay(50);
+}
+
+void oledDrawConfig() {
+  if (!oledReady) return;
+  display.clearDisplay();
+  display.fillRect(0, 0, 128, 11, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
+  display.setTextSize(1);
+  display.setCursor(3, 2);
+  display.print("ESP32 ATTACK");
+  display.setTextColor(SSD1306_WHITE);
+  for (int i = 0; i < MENU_COUNT; i++) {
+    int y = 13 + i * 6;
+    if (i == menuSelection) {
+      display.fillRect(0, y - 1, 128, 7, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    } else {
+      display.setTextColor(SSD1306_WHITE);
+    }
+    display.setCursor(2, y);
+    display.print(MENU_NAMES[i]);
+  }
+  display.display();
+}`},
+'BLE Scanner':{p:[[E,10,20],['oled',260,60]],w:[['1:GND','2:GND'],['1:3V3','2:VCC'],['1:G21','2:SDA'],['1:G22','2:SCL']],code:`#include <NimBLEDevice.h>
+#include <Wire.h>
+#include <Adafruit_SSD1306.h>
+
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22);
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("BLE Scanner");
+  display.display();
+  NimBLEDevice::init("ESP32-SCAN");
+}
+
+void loop() {
+  NimBLEScan *scan = NimBLEDevice::getScan();
+  scan->setActiveScan(true);
+  NimBLEScanResults results = scan->getResults(3000, false);
+  int n = results.getCount();
+  Serial.print("Found: "); Serial.println(n);
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("BLE: "); display.println(n);
+
+  for (int i = 0; i < n && i < 5; i++) {
+    NimBLEAdvertisedDevice dev = results.getDevice(i);
+    String nm = dev.getName();
+    if (nm.length() == 0) nm = "Unknown";
+    display.setCursor(0, 12 + i * 10);
+    display.print(nm.substring(0, 12));
+    display.print(" ");
+    display.print(dev.getRSSI());
+  }
+  display.display();
+  scan->clearResults();
+  delay(1000);
+}`},
+'BLE Spam → телефон':{p:[[E,10,20]],w:[],code:`// Дивись на віртуальний телефон праворуч!
+// Коли працює BLE spam — на телефоні з'являються нотифікації
+// "AirPods Pro знайдено", "Galaxy Watch5" тощо
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("BLE spam demo → дивись телефон");
+}
+
+void loop() {
+  SpamSim.startBLE(1);
+  delay(8000);
+  SpamSim.stop();
+  delay(2000);
+}`},
+'Beacon Spam → телефон':{p:[[E,10,20]],w:[],code:`// Beacon spam → на телефоні з'являються фейкові WiFi мережі
+
+void setup() {
+  Serial.begin(115200);
+}
+
+void loop() {
+  SpamSim.startBeacon(6);
+  delay(8000);
+  SpamSim.stop();
+  delay(2000);
+}`},
+'nRF24 2.4GHz Spectrum':{p:[[E,10,20],['nrf',230,60]],w:[['2:VCC','1:3V3'],['2:GND','1:GND'],['2:CE','1:G4'],['2:CSN','1:G5'],['2:SCK','1:G18'],['2:MOSI','1:G23'],['2:MISO','1:G19']],code:`// Дивись на вкладку "📡 2.4GHz" — там спектр!
+// nRF24 встановлюється на випадкові канали і показує RPD
+
+#include <SPI.h>
+#include <RF24.h>
+
+#define CE_PIN 4
+#define CSN_PIN 5
+
+RF24 radio(CE_PIN, CSN_PIN);
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("=== nRF24 2.4GHz Scanner ===");
+  if (!radio.begin()) {
+    Serial.println("nRF24 не відповідає!");
+    while (1) delay(1000);
+  }
+  radio.setPALevel(RF24_PA_MAX);
+  radio.setAutoAck(false);
+  radio.startListening();
+}
+
+void loop() {
+  // скануємо всі канали 0-125
+  for (int ch = 0; ch < 126; ch++) {
+    radio.setChannel(ch);
+    radio.startConstCarrier(RF24_PA_MAX, ch);  // sim hack
+    int hit = radio.testCarrier();
+    if (hit) Serial.print(".");
+    delay(2);
+  }
+  Serial.println();
+}`},
+'IR Decoder':{p:[[E,10,20],['ir',230,60]],w:[['2:VCC','1:3V3'],['2:GND','1:GND'],['2:OUT','1:G4']],code:`// IR декодер — симулює прийом IR сигналів
+// Дивись Serial Monitor
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("IR Decoder ready");
+  IRDecoder.start();
+}
+
+void loop() {
+  delay(5000);
+}`},
+'Deauth Detector':{p:[[E,10,20]],w:[],code:`// ДЕТЕКТОР deauth — виявляє, не генерує
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Deauth Detector");
+  DeauthDetector.start();
+}
+
+void loop() {
+  delay(5000);
+}`}
+};
+for(const k in EX)$('ex').add(new Option(k,k));
+function loadEx(k){stopSim();const e=EX[k];parts=[];wires=[];nid=1;e.p.forEach(([t,x,y,o])=>add(t,x,y,o));wires=e.w.map(a=>[...a]);$('code').value=e.code;sel=null;sbuf='';sdirty=1;VB={x:-10,y:0,w:360,h:600};fit();updSel();save();dirty=1;tab(0)}
+$('ex').onchange=()=>loadEx($('ex').value);
+try{const j=JSON.parse(localStorage.getItem('sim1')||'null');if(j&&j.parts.length){parts=j.parts;wires=j.wires;nid=j.nid;$('code').value=j.code}else loadEx('BLE Spam → телефон')}catch(e){loadEx('BLE Spam → телефон')}
+fit();updSel();solve();
+
+/* ============= Main loop ============= */
+let lastSpc=0;
+setInterval(()=>{
+ if(run.on){solve();dirty=1;if(performance.now()-lastSpc>80){scanSpectrum();lastSpc=performance.now()}}
+ if(sdirty){const s=$('ser');s.textContent=sbuf.slice(-5000);s.scrollTop=s.scrollHeight;sdirty=0}
+ if(dirty){render();dirty=0}
+ if(tabs[3].classList.contains('on'))drawSpectrum();
+},50);
+</script></body></html>
